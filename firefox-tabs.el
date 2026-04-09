@@ -2,8 +2,8 @@
 
 ;;; Commentary:
 ;; Reads Firefox's session recovery file (recovery.jsonlz4) and displays
-;; all open tabs in a buffer.  Requires python3 with the lz4 package
-;; for decompression of Mozilla's custom jsonlz4 format.
+;; all open tabs in a buffer.  Requires only `lz4' (brew install lz4)
+;; which provides the liblz4 shared library used via Python's ctypes.
 
 ;;; Code:
 
@@ -24,15 +24,41 @@
     (car sorted)))
 
 (defun firefox-tabs--read-jsonlz4 (path)
-  "Read a Mozilla jsonlz4 file at PATH and return parsed JSON."
+  "Read a Mozilla jsonlz4 file at PATH and return parsed JSON.
+Uses Python3 ctypes to call liblz4 directly (no pip packages needed)."
   (with-temp-buffer
     (let ((exit-code
            (call-process "python3" nil t nil "-c"
                          (format "
-import lz4.block, sys
-with open(%S, 'rb') as f:
-    f.read(8)
-    sys.stdout.buffer.write(lz4.block.decompress(f.read()))
+import ctypes, ctypes.util, struct, sys, os
+
+path = %S
+
+# Find liblz4
+lib_path = ctypes.util.find_library('lz4')
+if not lib_path:
+    # Try common Homebrew paths
+    for p in ['/opt/homebrew/lib/liblz4.dylib', '/usr/local/lib/liblz4.dylib',
+              '/usr/lib/x86_64-linux-gnu/liblz4.so.1', '/usr/lib/liblz4.so.1']:
+        if os.path.exists(p):
+            lib_path = p
+            break
+if not lib_path:
+    print('Cannot find liblz4. Install via: brew install lz4', file=sys.stderr)
+    sys.exit(1)
+
+lz4 = ctypes.CDLL(lib_path)
+
+with open(path, 'rb') as f:
+    f.read(8)   # skip 'mozLz40\\0' magic
+    orig_size = struct.unpack('<I', f.read(4))[0]
+    compressed = f.read()
+buf = ctypes.create_string_buffer(orig_size)
+result = lz4.LZ4_decompress_safe(compressed, buf, len(compressed), orig_size)
+if result < 0:
+    print('LZ4 decompression failed', file=sys.stderr)
+    sys.exit(1)
+sys.stdout.buffer.write(buf.raw[:result])
 " (expand-file-name path)))))
       (unless (zerop exit-code)
         (error "Failed to decompress %s (exit code %d): %s" path exit-code (buffer-string)))
