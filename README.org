@@ -1,0 +1,75 @@
+#+TITLE: firefox-tabs.el
+#+AUTHOR: Endi1
+
+Display all open Firefox tabs in an Emacs Org buffer.
+
+Reads Firefox's session recovery file (=recovery.jsonlz4=) and presents your
+open tabs as an Org outline grouped by window, with clickable links.
+
+* Requirements
+
+- Emacs 28+
+- Python 3
+- =lz4= library (=brew install lz4= on macOS, =apt install liblz4-dev= on Linux)
+- Firefox (must be running, or have been recently closed so the recovery file exists)
+
+No pip packages are needed — the decompression uses Python's built-in =ctypes=
+to call =liblz4= directly.
+
+* Installation
+
+** Manual
+
+Clone the repository and add it to your load path:
+
+#+begin_src emacs-lisp
+(add-to-list 'load-path "/path/to/firefox-tabs.el")
+(require 'firefox-tabs)
+#+end_src
+
+** use-package
+
+#+begin_src emacs-lisp
+(use-package firefox-tabs
+  :load-path "/path/to/firefox-tabs.el")
+#+end_src
+
+* Usage
+
+#+begin_src
+M-x firefox-tabs
+#+end_src
+
+This opens a =*Firefox Tabs*= buffer in Org mode with all your open tabs:
+
+#+begin_example
+#+TITLE: Firefox Open Tabs (42)
+
+* Window 1
+** [[https://example.com][Example Page]]
+** [[https://github.com][GitHub]]
+* Window 2
+** [[https://news.ycombinator.com][Hacker News]]
+#+end_example
+
+Use standard Org keybindings to navigate — =TAB= to fold/unfold, =RET= to open
+links, etc.
+
+* How It Works
+
+Firefox continuously writes its session state to a =recovery.jsonlz4= file
+inside your profile directory. This file uses Mozilla's custom =jsonlz4= format:
+an 8-byte magic header, a 4-byte uncompressed size, followed by LZ4
+block-compressed JSON.
+
+=firefox-tabs.el= locates the most recent recovery file, decompresses it via
+=liblz4=, parses the JSON, and renders the tabs as Org headings.
+
+* Supported Platforms
+
+- macOS (=~/Library/Application Support/Firefox/Profiles/*/=)
+- Linux (=~/.mozilla/firefox/*/=)
+
+* License
+
+GPL-3.0
